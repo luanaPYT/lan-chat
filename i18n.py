@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""Translations for LAN Chat. Supported languages: en, ru, ar."""
+
+TRANSLATIONS = {
+    "en": {
+        "language_name": "English",
+        "server_started": "Server started on {host}:{port} (Ctrl+C to stop)",
+        "server_waiting": "Waiting for connections...",
+        "server_client_joined": "[+] {name} joined",
+        "server_client_left": "[-] {name} left",
+        "server_unknown_client": "[+] unknown client joined",
+        "clients_connected": "Connected clients: {count}",
+        "welcome": "Welcome to LAN Chat!",
+        "enter_name": "Enter your name: ",
+        "connected": "Connected to {host}:{port}",
+        "connect_error": "Could not connect: {error}",
+        "connected_to_server": "Connected! Type your message and press Enter.",
+        "type_exit": "Type /exit to leave.",
+        "you_left": "You left the chat.",
+        "online": "Users online:",
+        "unknown_cmd": "Unknown command: {cmd}",
+        "server_not_found": "No server found on the network.",
+        "searching": "Searching for server on LAN...",
+        "cannot_hide_name": "Name cannot be empty.",
+        "disconnected": "Server closed the connection.",
+        "enter_pass": "Group passphrase (must match everyone): ",
+        "joined_msg": "{name} joined",
+        "left_msg": "{name} left",
+        "anon_left_msg": "An anonymous user left the chat",
+        "help": "/exit, /quit  leave the chat\n/users           show online users\n/clear          clear the screen\n/help           show this help",
+        "pass_mismatch": "Wrong passphrase - the server cannot decode traffic.",
+    },
+    "ru": {
+        "language_name": "Русский",
+        "server_started": "Сервер запущен на {host}:{port} (Ctrl+C для остановки)",
+        "server_waiting": "Ожидание подключений...",
+        "server_client_joined": "[+] {name} присоединился",
+        "server_client_left": "[-] {name} покинул чат",
+        "server_unknown_client": "[+] подключился неизвестный клиент",
+        "clients_connected": "Подключено клиентов: {count}",
+        "welcome": "Добро пожаловать в LAN Chat!",
+        "enter_name": "Введите ваше имя: ",
+        "connected": "Подключено к {host}:{port}",
+        "connect_error": "Не удалось подключиться: {error}",
+        "connected_to_server": "Вы подключены! Введите сообщение и нажмите Enter.",
+        "type_exit": "Введите /exit чтобы выйти.",
+        "you_left": "Вы покинули чат.",
+        "online": "Пользователи онлайн:",
+        "unknown_cmd": "Неизвестная команда: {cmd}",
+        "server_not_found": "Сервер не найден в сети.",
+        "searching": "Поиск сервера в локальной сети...",
+        "cannot_hide_name": "Имя не может быть пустым.",
+        "disconnected": "Сервер закрыл соединение.",
+        "enter_pass": "Общий пароль чата (должен совпадать у всех): ",
+        "joined_msg": "{name} присоединился",
+        "left_msg": "{name} покинул чат",
+        "anon_left_msg": "Анонимный пользователь покинул чат",
+        "help": "/exit, /quit  выйти из чата\n/users      показать кто онлайн\n/clear      очистить экран\n/help       эта справка",
+        "pass_mismatch": "Неверный пароль - сервер не может расшифровать трафик.",
+    },
+    "ar": {
+        "language_name": "العربية",
+        "server_started": "تم تشغيل الخادم على {host}:{port} (Ctrl+C للإيقاف)",
+        "server_waiting": "في انتظار الاتصالات...",
+        "server_client_joined": "[+] انضم {name}",
+        "server_client_left": "[-] غادر {name}",
+        "server_unknown_client": "[+] اتصال جديد غير معروف",
+        "clients_connected": "العملاء المتصلون: {count}",
+        "welcome": "مرحبًا بك في دردشة الشبكة المحلية!",
+        "enter_name": "أدخل اسمك: ",
+        "connected": "متصل بـ {host}:{port}",
+        "connect_error": "تعذر الاتصال: {error}",
+        "connected_to_server": "متصل! اكتب رسالتك واضغط Enter.",
+        "type_exit": "اكتب /exit للمغادرة.",
+        "you_left": "غادرت الدردشة.",
+        "online": "المستخدمون المتصلون:",
+        "unknown_cmd": "أمر غير معروف: {cmd}",
+        "server_not_found": "لم يتم العثور على خادم على الشبكة.",
+        "searching": "جارٍ البحث عن خادم على الشبكة المحلية...",
+        "cannot_hide_name": "لا يمكن أن يكون الاسم فارغًا.",
+        "disconnected": "أغلق الخادم الاتصال.",
+        "enter_pass": "كلمة مرور المجموعة (يجب أن تتطابق مع الجميع): ",
+        "joined_msg": "انضم {name}",
+        "left_msg": "غادر {name}",
+        "anon_left_msg": "غادر مستخدم مجهول الدردشة",
+        "help": "/exit, /quit  غادر الدردشة\n/users      أظهر من هو متصل\n/clear      امسح الشاشة\n/help       هذه المساعدة",
+        "pass_mismatch": "كلمة المرور خاطئة - لا يمكن فك تشفير حركة المرور.",
+    },
+}
+
+LANGUAGES = ["en", "ru", "ar"]
+
+
+class Translator:
+    def __init__(self, lang="en"):
+        self.lang = lang if lang in TRANSLATIONS else "en"
+
+    def t(self, key, **kwargs):
+        msg = TRANSLATIONS[self.lang].get(
+            key, TRANSLATIONS["en"].get(key, key)
+        )
+        return msg.format(**kwargs)
