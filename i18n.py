@@ -57,9 +57,13 @@ TRANSLATIONS = {
         "joined_msg": "{name} joined",
         "left_msg": "{name} left",
         "anon_left_msg": "An anonymous user left the chat",
+        "pick_photo_title": "Select a photo to send",
+        "pick_cancel": "photo selection cancelled",
+        "pick_missing": "photo picker (zenity) not found — use /send <path>",
         "help": (
             "/dm <name> <msg>   private message\n"
             "/r <msg>           reply to last sender\n"
+            "/photo             pick a photo (file manager)\n"
             "/send <path>       send a file\n"
             "/users             who is online\n"
             "/nick <name>       change display name\n"
@@ -125,9 +129,13 @@ TRANSLATIONS = {
         "joined_msg": "{name} присоединился",
         "left_msg": "{name} покинул чат",
         "anon_left_msg": "Анонимный пользователь покинул чат",
+        "pick_photo_title": "Выберите фото для отправки",
+        "pick_cancel": "выбор фото отменён",
+        "pick_missing": "выбор фото (zenity) не найден — используйте /send <путь>",
         "help": (
             "/dm <имя> <текст>  приватное сообщение\n"
             "/r <текст>         ответ последнему\n"
+            "/photo             выбрать фото (файловый менеджер)\n"
             "/send <путь>       отправить файл\n"
             "/users             кто онлайн\n"
             "/nick <имя>        сменить отображаемое имя\n"
@@ -193,9 +201,13 @@ TRANSLATIONS = {
         "joined_msg": "انضم {name}",
         "left_msg": "غادر {name}",
         "anon_left_msg": "غادر مستخدم مجهول الدردشة",
+        "pick_photo_title": "اختر صورة لإرسالها",
+        "pick_cancel": "تم إلغاء اختيار الصورة",
+        "pick_missing": "أداة اختيار الصور غير موجودة — استخدم /send <المسار>",
         "help": (
             "/dm <اسم> <نص>    رسالة خاصة\n"
             "/r <نص>            رد على آخر مرسل\n"
+            "/photo             اختر صورة (مدير الملفات)\n"
             "/send <مسار>       إرسال ملف\n"
             "/users             من متصل\n"
             "/nick <اسم>        تغيير الاسم المعروض\n"

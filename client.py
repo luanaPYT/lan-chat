@@ -177,6 +177,26 @@ class ChatUI:
         msg = self.tr.t("left_msg", name=name)
         self._write(f"{self.c('red')}\u25c2 {msg}{self.c('reset')}")
 
+    def _discard_escape(self, fd, seq):
+        """Read the rest of a CSI/SS3 escape sequence (arrow keys, etc.)
+        and discard it so it never corrupts the input buffer."""
+        import select as _select
+        while True:
+            final = 0x40 <= seq[-1] <= 0x7E
+            prefix = seq in (b"\x1b[", b"\x1bO", b"\x1bP")
+            if final and not prefix:
+                return
+            r, _, _ = _select.select([fd], [], [], 0.05)
+            if not r:
+                return
+            try:
+                b = os.read(fd, 1)
+            except OSError:
+                return
+            if not b:
+                return
+            seq += b
+
     def read_line(self):
         self.buffer = ""
         self._render_prompt()
@@ -204,6 +224,9 @@ class ChatUI:
                     for _ in range(4):
                         sys.stdout.write("\a")
                     sys.stdout.flush()
+                    continue
+                if ch == b"\x1b":
+                    self._discard_escape(fd, b"\x1b")
                     continue
                 pending += ch
                 if ch in (b"\r", b"\n"):
@@ -378,6 +401,30 @@ class ChatClient:
         self.ui.file_card(self.name, safe_name(path), len(data), "")
         self.ui.info(self.tr.t("file_sent", name=safe_name(path),
                                size=human_size(len(data))))
+
+    def pick_and_send_photo(self):
+        """Open the system file manager to choose a photo, then send it."""
+        import subprocess
+        import shutil
+        if not shutil.which("zenity"):
+            self.ui.err(self.tr.t("pick_missing"))
+            return
+        filters = ("Images (*.png *.jpg *.jpeg *.gif *.bmp *.webp *.tiff "
+                   "*.heic)")
+        try:
+            proc = subprocess.run(
+                ["zenity", "--file-selection",
+                 "--title", self.tr.t("pick_photo_title"),
+                 "--file-filter", filters],
+                capture_output=True, timeout=300)
+        except (subprocess.TimeoutExpired, OSError) as e:
+            self.ui.err(self.tr.t("file_error", error=e))
+            return
+        path = proc.stdout.decode("utf-8", "replace").strip()
+        if not path or proc.returncode != 0:
+            self.ui.info(self.tr.t("pick_cancel"))
+            return
+        self.send_file(path)
 
     def _receive_file(self, payload):
         fid = payload["id"]
@@ -578,6 +625,10 @@ class ChatClient:
                 self.ui.err("usage: /send <path>")
                 return
             self.send_file(parts[1])
+            return
+
+        if cmd in ("/photo", "/pic"):
+            self.pick_and_send_photo()
             return
 
         if cmd == "/passwd":
