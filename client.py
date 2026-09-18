@@ -40,6 +40,7 @@ from crypto import (new_fernet, encrypt, decrypt, encrypt_bin, decrypt_bin,
 DISCOVERY_PORT_OFFSET = 1000
 MAGIC = "LANCHAT_DISCOVERY"
 DISCOVERY_TIMEOUT = 2.0
+ASCII_ALNUM = re.compile(r"[A-Za-z0-9]+$")
 FILE_CHUNK = 20000
 MAX_FILE = 20 * 1024 * 1024
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -364,6 +365,8 @@ class ChatClient:
         self.ui = ChatUI(lang, color)
         self.fernet = new_fernet(group_key)
         self.auth_key = derive_auth_verifier(login, account_pass)
+        self.account_pass = account_pass
+        self.register_mode = False
         self.pin = pin
         self.name = name
         self.login = login
@@ -394,10 +397,12 @@ class ChatClient:
         self.sock.settimeout(None)
         status = self._authenticate()
         if status != "ok":
-            if status == "blocked":
-                self.ui.err(self.tr.t("admin_blocked"))
-            else:
-                self.ui.err(self.tr.t("wrong_credentials"))
+            msg = {
+                "blocked": self.tr.t("admin_blocked"),
+                "chars": self.tr.t("register_chars"),
+                "exists": self.tr.t("register_exists"),
+            }.get(status, self.tr.t("wrong_credentials"))
+            self.ui.err(msg)
             try:
                 self.sock.close()
             except OSError:
@@ -428,6 +433,25 @@ class ChatClient:
         if not challenge or not challenge.startswith("H "):
             return "bad"
         nonce = challenge[2:].strip()
+        if self.register_mode:
+            try:
+                self.sock.sendall(f"RG {self.login} {self.account_pass}\n"
+                                  .encode())
+            except OSError:
+                return "bad"
+            challenge = self._recv_line()
+            if not challenge:
+                return "bad"
+            if challenge.startswith("E "):
+                code = challenge[2:].strip()
+                if code == "C":
+                    return "chars"
+                if code == "X":
+                    return "exists"
+                return "bad"
+            if not challenge.startswith("H "):
+                return "bad"
+            nonce = challenge[2:].strip()
         hmac_hex = auth_hmac(self.auth_key, nonce).hex()
         try:
             self.sock.sendall(f"A {self.login} {hmac_hex}\n".encode())
@@ -645,7 +669,10 @@ class ChatClient:
             self.ui.system(self.tr.t("register_ok", login=login), "green")
         elif line.startswith("ERRR"):
             reason = line.split(" ", 1)[1] if " " in line else "?"
-            self.ui.err(self.tr.t("register_fail", reason=reason))
+            msg = {"chars": self.tr.t("register_chars"),
+                   "exists": self.tr.t("register_exists")}.get(
+                       reason, self.tr.t("register_fail", reason=reason))
+            self.ui.err(msg)
         elif line.startswith("OKPW"):
             self.ui.system(self.tr.t("passwd_changed"), "green")
         elif line.startswith("OKRN"):
@@ -867,7 +894,7 @@ def main():
     parser.add_argument("--port", type=int, default=5555)
     parser.add_argument("--name", default=None,
                         help="your display name (default: random)")
-    parser.add_argument("--lang", default="en", choices=LANGUAGES)
+    parser.add_argument("--lang", default=None, choices=LANGUAGES)
     parser.add_argument("--login", default=None,
                         help="account login from users.json")
     parser.add_argument("--pass", dest="account_pass", default=None,
@@ -879,11 +906,42 @@ def main():
     parser.add_argument("--no-color", action="store_true")
     args = parser.parse_args()
 
-    tr = Translator(args.lang)
+    lang = args.lang
+    if lang is None:
+        print("  Select interface language / Выберите язык интерфейса:")
+        print("    1) English    2) Русский    3) العربية")
+        sel = input("  > ").strip()
+        lang = {"1": "en", "2": "ru", "3": "ar"}.get(sel, "en")
 
-    login = args.login or input(tr.t("enter_login") + " ").strip()
-    account_pass = args.account_pass or getpass.getpass(
-        tr.t("enter_account_pass") + " ")
+    tr = Translator(lang)
+
+    auto = bool(args.login and args.account_pass)
+    register_mode = False
+    if auto:
+        login = args.login.strip()
+        account_pass = args.account_pass
+    else:
+        print()
+        print(tr.t("welcome"))
+        choice = input(tr.t("entry_ask") + " ").strip().lower()
+        register_mode = (choice == "2" or choice
+                         in ("r", "p", "р", "ت"))
+
+        if register_mode:
+            login = input(tr.t("enter_new_login") + " ").strip()
+            p1 = args.account_pass or getpass.getpass(tr.t("enter_new_pass") + " ")
+            p2 = getpass.getpass(tr.t("enter_new_pass_repeat") + " ")
+            if p1 != p2:
+                print(tr.t("pass_nomatch"))
+                sys.exit(1)
+            if not (ASCII_ALNUM.match(login) and ASCII_ALNUM.match(p1)):
+                print(tr.t("register_chars"))
+                sys.exit(1)
+            account_pass = p1
+        else:
+            login = args.login or input(tr.t("enter_login") + " ").strip()
+            account_pass = args.account_pass or getpass.getpass(
+                tr.t("enter_account_pass") + " ")
     group_key = args.groupkey or getpass.getpass(
         tr.t("enter_groupkey") + " ")
 
@@ -891,7 +949,8 @@ def main():
         args.name = login
 
     client = ChatClient(args.host, args.port, args.name, login, account_pass,
-                        group_key, args.lang, not args.no_color, pin=args.pin)
+                        group_key, lang, not args.no_color, pin=args.pin)
+    client.register_mode = register_mode
     try:
         client.run(args.host, args.port)
     except KeyboardInterrupt:

@@ -22,6 +22,7 @@ import hmac
 import json
 import os
 import random
+import re
 import secrets
 import socket
 import string
@@ -36,6 +37,7 @@ DISCOVERY_PORT_OFFSET = 1000
 MAGIC = "LANCHAT_DISCOVERY"
 RECV_LIMIT = 4 * 1024 * 1024   # max single line (file chunks)
 MAX_RECV_TOTAL = 512 * 1024 * 1024
+ASCII_ALNUM = re.compile(r"[A-Za-z0-9]+$")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
 MAILBOX_FILE = os.path.join(BASE_DIR, "mailbox.log")
@@ -206,6 +208,8 @@ class ChatServer:
     def apply_registration(self, login, password):
         if login in self.users:
             return False, "exists"
+        if not (ASCII_ALNUM.match(login) and ASCII_ALNUM.match(password)):
+            return False, "chars"
         verifier = derive_auth_verifier(login, password)
         self.users[login] = verifier
         save_users(self.users, self.admins, self.pins)
@@ -214,7 +218,7 @@ class ChatServer:
         return True, "ok"
 
     def apply_password(self, login, new_password):
-        if login not in self.users:
+        if login not in self.users or not ASCII_ALNUM.match(new_password):
             return False
         verifier = derive_auth_verifier(login, new_password)
         self.users[login] = verifier
@@ -225,6 +229,8 @@ class ChatServer:
 
     def apply_rename(self, login, new_login):
         if login not in self.users or new_login in self.users:
+            return False
+        if not ASCII_ALNUM.match(new_login):
             return False
         self.users[new_login] = self.users.pop(login)
         if login in self.admins:
@@ -246,28 +252,42 @@ class ChatServer:
             self.log(f"users.json reloaded: {len(self.users)} accounts", "dim")
 
     def authenticate(self, sock):
-        """Challenge-response auth. Returns
-        (status, login, is_admin, admin_key): status is "ok", "bad" or
-        "blocked"; admin_key is the per-session signing key for admins."""
-        challenge = secrets.token_hex(16)
+        """Challenge-response auth. Accepts an optional pre-auth registration
+        (`RG <login> <password>`) before the normal `A` exchange. Returns
+        (status, login, is_admin, admin_key) where status is "ok", "bad",
+        "blocked", "chars" or "exists"."""
         login = None
         try:
-            sock.sendall(f"H {challenge}\n".encode())
-            data = sock.recv(4096)
-            if not data:
-                return "bad", None, False, None
-            line = data.decode("utf-8", "replace").strip()
-            parts = line.split(" ")
-            if len(parts) != 3 or parts[0] != "A":
-                return "bad", None, False, None
-            _, login, client_hmac = parts
-            verifier = self.users.get(login)
-            if not verifier:
-                return "bad", login, False, None
-            expected = auth_hmac(verifier, challenge)
-            sent = bytes.fromhex(client_hmac) if len(client_hmac) == 64 else b""
-            if not hmac.compare_digest(expected, sent):
-                return "bad", login, False, None
+            while True:
+                challenge = secrets.token_hex(16)
+                sock.sendall(f"H {challenge}\n".encode())
+                data = sock.recv(4096)
+                if not data:
+                    return "bad", None, False, None
+                line = data.decode("utf-8", "replace").strip()
+                parts = line.split(" ")
+                if parts and parts[0] == "RG":
+                    if len(parts) < 3:
+                        return "bad", None, False, None
+                    new_login, new_pass = parts[1], parts[2]
+                    if not (ASCII_ALNUM.match(new_login)
+                            and ASCII_ALNUM.match(new_pass)):
+                        return "chars", new_login, False, None
+                    if new_login in self.users:
+                        return "exists", new_login, False, None
+                    self.apply_registration(new_login, new_pass)
+                    continue  # fresh challenge for the new account
+                if len(parts) != 3 or parts[0] != "A":
+                    return "bad", None, False, None
+                _, login, client_hmac = parts
+                verifier = self.users.get(login)
+                if not verifier:
+                    return "bad", login, False, None
+                expected = auth_hmac(verifier, challenge)
+                sent = bytes.fromhex(client_hmac) if len(client_hmac) == 64 else b""
+                if not hmac.compare_digest(expected, sent):
+                    return "bad", login, False, None
+                break
             is_admin = login in self.admins
             admin_key = None
             if is_admin:
@@ -379,6 +399,10 @@ class ChatServer:
                 self.letter("auth_failed", self.tr.t("mail_admin_blocked"),
                             [("LOGIN", login or "?"),
                              ("ADDR", str(addr[0]))])
+            elif status == "chars":
+                self._send(sock, "E C")
+            elif status == "exists":
+                self._send(sock, "E X")
             else:
                 self._send(sock, "E")
                 self.letter("auth_failed", self.tr.t("mail_auth_failed"),
