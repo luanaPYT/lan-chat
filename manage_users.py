@@ -98,6 +98,21 @@ def cmd_reset(args):
     return 0
 
 
+def cmd_set_admin(args):
+    users = load()
+    if args.name not in users:
+        print(f"no such account: '{args.name}'")
+        return 1
+    if args.yes:
+        users[args.name]["admin"] = True
+    else:
+        users[args.name].pop("admin", None)
+    save(users)
+    state = "admin (chat blocked)" if args.yes else "regular user"
+    print(f"'{args.name}' is now {state}")
+    return 0
+
+
 def cmd_remove(args):
     users = load()
     if args.name not in users:
@@ -129,10 +144,11 @@ def cmd_list(args):
     if not users:
         print("no accounts yet - run: python3 manage_users.py generate 15")
         return 0
-    print(f"{'LOGIN':<18} VERIFIER (first 16 bytes)")
-    print("-" * 50)
+    print(f"{'LOGIN':<18} {'ROLE':<10} VERIFIER (first 16 bytes)")
+    print("-" * 56)
     for login, rec in sorted(users.items()):
-        print(f"{login:<18} {rec['verifier'][:32]}...")
+        role = "ADMIN" if rec.get("admin") else "user"
+        print(f"{login:<18} {role:<10} {rec['verifier'][:32]}...")
 
 
 def main():
@@ -160,6 +176,12 @@ def main():
     rm = sub.add_parser("remove", help="delete an account")
     rm.add_argument("name")
     rm.set_defaults(fn=cmd_remove)
+
+    sa = sub.add_parser("set-admin", help="mark an account as admin (chat blocked)")
+    sa.add_argument("name")
+    sa.add_argument("--no", dest="yes", action="store_false", default=True,
+                    help="remove the admin flag instead")
+    sa.set_defaults(fn=cmd_set_admin)
 
     rn = sub.add_parser("rename", help="rename an account login")
     rn.add_argument("old")

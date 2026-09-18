@@ -26,6 +26,7 @@ TRANSLATIONS = {
         "enter_account_pass": "Account password: ",
         "enter_groupkey": "Group passphrase (must match everyone): ",
         "wrong_credentials": "Wrong login or password.",
+        "admin_blocked": "This is an admin account — chat access is blocked for it.",
         "auth_failed": "[!] denied login from {addr}",
         "accounts_loaded": "{count} accounts loaded",
         "file_sent": "sending file: {name} ({size})",
@@ -54,17 +55,23 @@ TRANSLATIONS = {
         "mail_pass_changed": "PASSWORD CHANGED",
         "mail_login_renamed": "LOGIN RENAMED",
         "mail_auth_failed": "LOGIN DENIED",
+        "mail_admin_blocked": "ADMIN ACCOUNT BLOCKED (ADMIN), CHAT NOT ALLOWED",
         "joined_msg": "{name} joined",
         "left_msg": "{name} left",
         "anon_left_msg": "An anonymous user left the chat",
-        "pick_photo_title": "Select a photo to send",
-        "pick_cancel": "photo selection cancelled",
-        "pick_missing": "photo picker (zenity) not found — use /send <path>",
+        "links_header": "Links:",
+        "links_empty": "no links yet",
+        "links_hint": "open: /open <number>",
+        "open_usage": "usage: /open <number> or /open <url>",
+        "opening": "opening: {url}",
+        "open_path": "no browser found — open it yourself: {url}",
+        "mail_admin_blocked": "ADMIN ACCOUNT BLOCKED (ADMIN), CHAT NOT ALLOWED",
         "help": (
             "/dm <name> <msg>   private message\n"
             "/r <msg>           reply to last sender\n"
-            "/photo             pick a photo (file manager)\n"
             "/send <path>       send a file\n"
+            "/open [num|url]   open a link from chat\n"
+            "/links            show collected links\n"
             "/users             who is online\n"
             "/nick <name>       change display name\n"
             "/passwd <pass>     change account password\n"
@@ -98,6 +105,7 @@ TRANSLATIONS = {
         "enter_account_pass": "Пароль аккаунта: ",
         "enter_groupkey": "Общий пароль чата (одинаковый у всех): ",
         "wrong_credentials": "Неверный логин или пароль.",
+        "admin_blocked": "Это админ-аккаунт — вход в чат для него запрещён.",
         "auth_failed": "[!] отказ входа от {addr}",
         "accounts_loaded": "Загружено аккаунтов: {count}",
         "file_sent": "отправка файла: {name} ({size})",
@@ -126,17 +134,22 @@ TRANSLATIONS = {
         "mail_pass_changed": "ПАРОЛЬ ИЗМЕНЁН",
         "mail_login_renamed": "ЛОГИН ИЗМЕНЁН",
         "mail_auth_failed": "ВХОД ОТКЛОНЁН",
+        "mail_admin_blocked": "АККАУНТ АДМИНА ЗАБЛОКИРОВАН, ВХОД В ЧАТ ЗАПРЕЩЁН",
         "joined_msg": "{name} присоединился",
         "left_msg": "{name} покинул чат",
         "anon_left_msg": "Анонимный пользователь покинул чат",
-        "pick_photo_title": "Выберите фото для отправки",
-        "pick_cancel": "выбор фото отменён",
-        "pick_missing": "выбор фото (zenity) не найден — используйте /send <путь>",
+        "links_header": "Ссылки:",
+        "links_empty": "ссылок пока нет",
+        "links_hint": "открыть: /open <номер>",
+        "open_usage": "использование: /open <номер> или /open <URL>",
+        "opening": "открываю: {url}",
+        "open_path": "нет браузера — открой сам: {url}",
         "help": (
             "/dm <имя> <текст>  приватное сообщение\n"
             "/r <текст>         ответ последнему\n"
-            "/photo             выбрать фото (файловый менеджер)\n"
             "/send <путь>       отправить файл\n"
+            "/open [номер|URL] открыть ссылку из чата\n"
+            "/links            показать собранные ссылки\n"
             "/users             кто онлайн\n"
             "/nick <имя>        сменить отображаемое имя\n"
             "/passwd <пароль>   сменить пароль\n"
@@ -170,6 +183,7 @@ TRANSLATIONS = {
         "enter_account_pass": "كلمة مرور الحساب: ",
         "enter_groupkey": "كلمة مرور المجموعة (يجب أن تتطابق مع الجميع): ",
         "wrong_credentials": "اسم مستخدم أو كلمة مرور خاطئة.",
+        "admin_blocked": "هذا حساب مدير — تم منع الدخول إلى الدردشة.",
         "auth_failed": "[!] رفض الدخول من {addr}",
         "accounts_loaded": "تم تحميل الحسابات: {count}",
         "file_sent": "جارٍ إرسال الملف: {name} ({size})",
@@ -198,17 +212,22 @@ TRANSLATIONS = {
         "mail_pass_changed": "تم تغيير كلمة المرور",
         "mail_login_renamed": "تم تغيير اسم المستخدم",
         "mail_auth_failed": "تم رفض الدخول",
+        "mail_admin_blocked": "حساب المدير محظور، لا يمكن دخول الدردشة",
         "joined_msg": "انضم {name}",
         "left_msg": "غادر {name}",
         "anon_left_msg": "غادر مستخدم مجهول الدردشة",
-        "pick_photo_title": "اختر صورة لإرسالها",
-        "pick_cancel": "تم إلغاء اختيار الصورة",
-        "pick_missing": "أداة اختيار الصور غير موجودة — استخدم /send <المسار>",
+        "links_header": "الروابط:",
+        "links_empty": "لا توجد روابط بعد",
+        "links_hint": "افتح: /open <رقم>",
+        "open_usage": "الاستخدام: /open <رقم> أو /open <الرابط>",
+        "opening": "جارٍ فتح: {url}",
+        "open_path": "لا يوجد متصفح — افتح بنفسك: {url}",
         "help": (
             "/dm <اسم> <نص>    رسالة خاصة\n"
             "/r <نص>            رد على آخر مرسل\n"
-            "/photo             اختر صورة (مدير الملفات)\n"
             "/send <مسار>       إرسال ملف\n"
+            "/open [رقم|رابط]   فتح رابط من الدردشة\n"
+            "/links            عرض الروابط المجمعة\n"
             "/users             من متصل\n"
             "/nick <اسم>        تغيير الاسم المعروض\n"
             "/passwd < كلمة>   تغيير كلمة المرور\n"

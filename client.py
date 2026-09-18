@@ -21,6 +21,7 @@ import argparse
 import getpass
 import json
 import os
+import re
 import shlex
 import shutil
 import socket
@@ -69,6 +70,15 @@ def human_size(n):
 
 def safe_name(path):
     return os.path.basename(path) or "file"
+
+
+URL_RE = re.compile(r"https?://[^\s<>\"']+")
+
+def highlight_urls(text, url_color="\033[96m"):
+    """Wrap every URL in the message with the given color."""
+    if url_color:
+        return URL_RE.sub(lambda m: url_color + m.group(0) + "\033[0m", text)
+    return text
 
 
 class ChatUI:
@@ -133,7 +143,7 @@ class ChatUI:
             caret = "\u27a4" if mine else "\u25c6"
             tag = "🔒" if private else ""
             nl = f"{FGC.format(c=name_color)}{self.c('bold')}{tag} {caret} {n}"
-            msg = truncate(text, max(10, self.width - len(n) - 4))
+            msg = truncate(highlight_urls(text), max(10, self.width - len(n) - 4))
             line = nl + self.c("reset") + " " + msg
         else:
             tag = "you" if mine else (f"priv {n}" if private else n)
@@ -150,7 +160,8 @@ class ChatUI:
                     f"{self.c('magenta')}{truncate(label, 30)}"
                     f"{self.c('reset')}\n"
                     f"  {FGC.format(c=name_color)}{self.c('bold')}{name}"
-                    f"{self.c('reset')}: {truncate(text, max(10, self.width - 6))}")
+                    f"{self.c('reset')}: "
+                    f"{truncate(highlight_urls(text), max(10, self.width - 6))}")
         else:
             line = f"🔒 {label}: {text}"
         self._write(line)
@@ -279,6 +290,7 @@ class ChatClient:
         self.last_sender = None
         self.known_names = {}       # anon -> display name
         self.file_incoming = {}     # file_id -> state
+        self.links = []             # collected URLs shown in chat
 
     # networking ------------------------------------------------------------
 
@@ -293,8 +305,12 @@ class ChatClient:
             self.ui._write("")
             self._tcp_connect(*found)
         self.sock.settimeout(None)
-        if not self._authenticate():
-            self.ui.err(self.tr.t("wrong_credentials"))
+        status = self._authenticate()
+        if status != "ok":
+            if status == "blocked":
+                self.ui.err(self.tr.t("admin_blocked"))
+            else:
+                self.ui.err(self.tr.t("wrong_credentials"))
             try:
                 self.sock.close()
             except OSError:
@@ -323,18 +339,22 @@ class ChatClient:
     def _authenticate(self):
         challenge = self._recv_line()
         if not challenge or not challenge.startswith("H "):
-            return False
+            return "bad"
         nonce = challenge[2:].strip()
         hmac_hex = auth_hmac(self.auth_key, nonce).hex()
         try:
             self.sock.sendall(f"A {self.login} {hmac_hex}\n".encode())
         except OSError:
-            return False
+            return "bad"
         resp = self._recv_line()
-        if not resp or not resp.startswith("I "):
-            return False
+        if not resp:
+            return "bad"
+        if resp.startswith("E B"):
+            return "blocked"
+        if not resp.startswith("I "):
+            return "bad"
         self.anon_id = resp[2:].strip()
-        return True
+        return "ok"
 
     def _tcp_connect(self, host, port):
         self._shown_host = host
@@ -402,35 +422,13 @@ class ChatClient:
         self.ui.info(self.tr.t("file_sent", name=safe_name(path),
                                size=human_size(len(data))))
 
-    def pick_and_send_photo(self):
-        """Open the system file manager to choose a photo, then send it."""
-        import subprocess
-        import shutil
-        if not shutil.which("zenity"):
-            self.ui.err(self.tr.t("pick_missing"))
-            return
-        filters = ("Images (*.png *.jpg *.jpeg *.gif *.bmp *.webp *.tiff "
-                   "*.heic)")
-        try:
-            proc = subprocess.run(
-                ["zenity", "--file-selection",
-                 "--title", self.tr.t("pick_photo_title"),
-                 "--file-filter", filters],
-                capture_output=True, timeout=300)
-        except (subprocess.TimeoutExpired, OSError) as e:
-            self.ui.err(self.tr.t("file_error", error=e))
-            return
-        path = proc.stdout.decode("utf-8", "replace").strip()
-        if not path or proc.returncode != 0:
-            self.ui.info(self.tr.t("pick_cancel"))
-            return
-        self.send_file(path)
-
-    def _receive_file(self, payload):
+    def _receive_file(self, payload, sender=None):
         fid = payload["id"]
         if payload.get("i") is None:  # header
             state = {"fn": payload.get("fn", "file"), "chunks": payload["chunks"],
-                     "size": payload["size"], "parts": {}}
+                     "size": payload["size"], "parts": {},
+                     "anon": sender or getattr(self, "_last_anon", ""),
+                     "sname": payload.get("n", sender or "???")}
             self.file_incoming[fid] = state
             return
         state = self.file_incoming.get(fid)
@@ -461,10 +459,18 @@ class ChatClient:
         except (OSError, KeyError) as e:
             self.ui.err(self.tr.t("file_error", error=e))
             return
-        who = self.known_names.get(getattr(self, "_last_anon", ""), "?")
-        self.ui.file_card(who, state["fn"], state["size"], path)
+        who = (state.get("sname") or state.get("anon")
+               or self.known_names.get(state.get("anon", ""), "???"))
+        self.ui.file_card(who, state["fn"], state.get("size", 0), path)
 
     # message handling ------------------------------------------------------
+
+    def _collect_links(self, text):
+        found = URL_RE.findall(text or "")
+        for url in found:
+            unique = url.rstrip(".,;:!?")
+            if unique not in self.links:
+                self.links.append(unique)
 
     def handle_payload(self, sender, payload):
         mtype = payload.get("t", "chat")
@@ -472,15 +478,17 @@ class ChatClient:
         if sender:
             self.known_names[sender] = name
         if mtype == "chat":
+            text = payload.get("m", "")
+            self._collect_links(text)
             if payload.get("to"):
                 if payload["to"] in (self.name,) and name != self.name:
                     self.last_sender = name
                     c = NAME_PALETTE[hash(sender or name) % len(NAME_PALETTE)]
-                    self.ui.private(name, payload.get("m", ""), c)
+                    self.ui.private(name, text, c)
                 return
             self.last_sender = name
             c = NAME_PALETTE[hash(sender or name) % len(NAME_PALETTE)]
-            self.ui.message(name, payload.get("m", ""), c)
+            self.ui.message(name, text, c)
         elif mtype == "join":
             self.ui.joined(name)
         elif mtype == "leave":
@@ -493,15 +501,17 @@ class ChatClient:
                 self.name = new
             self.ui.system(self.tr.t("nick_set_by", old=old, new=new))
         elif mtype == "file":
-            self._receive_file(payload)
+            self._receive_file(payload, sender)
         elif mtype == "fchunk":
-            self._receive_file(payload)
+            self._receive_file(payload, sender)
         elif mtype == "dm":
             to = payload.get("to")
+            text = payload.get("m", "")
+            self._collect_links(text)
             if to is None or to in (self.name,) and name != self.name:
                 self.last_sender = name
                 c = NAME_PALETTE[hash(sender or name) % len(NAME_PALETTE)]
-                self.ui.private(name, payload.get("m", ""), c, reply=True)
+                self.ui.private(name, text, c, reply=True)
 
     def handle_line(self, line):
         if line.startswith("D "):
@@ -602,6 +612,7 @@ class ChatClient:
                 return
             self.send_json({"t": "chat", "n": self.name, "m": msg,
                             "to": target})
+            self._collect_links(msg)
             c = NAME_PALETTE[hash(target) % len(NAME_PALETTE)]
             self.ui.private(target, msg, c, mine=True)
             return
@@ -616,6 +627,7 @@ class ChatClient:
                 return
             self.send_json({"t": "chat", "n": self.name, "m": msg,
                             "to": self.last_sender})
+            self._collect_links(msg)
             c = NAME_PALETTE[hash(self.last_sender) % len(NAME_PALETTE)]
             self.ui.private(self.last_sender, msg, c)
             return
@@ -627,8 +639,12 @@ class ChatClient:
             self.send_file(parts[1])
             return
 
-        if cmd in ("/photo", "/pic"):
-            self.pick_and_send_photo()
+        if cmd == "/open":
+            self.open_link(parts)
+            return
+
+        if cmd == "/links":
+            self.list_links()
             return
 
         if cmd == "/passwd":
@@ -657,6 +673,7 @@ class ChatClient:
             return
 
         c = NAME_PALETTE[hash(self.name) % len(NAME_PALETTE)]
+        self._collect_links(line)
         self.ui.message(self.name, line, c, mine=True)
         try:
             self.send_json({"t": "chat", "n": self.name, "m": line})
@@ -665,6 +682,41 @@ class ChatClient:
             self.running = False
 
     # lifecycle -------------------------------------------------------------
+
+    def open_link(self, parts):
+        """Open a link collected from chat (/open <number|url>)."""
+        import shutil
+        import subprocess
+        if len(parts) >= 2:
+            arg = " ".join(parts[1:]).strip()
+            if URL_RE.fullmatch(arg):
+                url = arg
+            elif arg.isdigit():
+                idx = int(arg) - 1
+                if not (0 <= idx < len(self.links)):
+                    self.ui.err(self.tr.t("links_empty"))
+                    return
+                url = self.links[idx]
+            else:
+                self.ui.err(self.tr.t("open_usage"))
+                return
+            opener = shutil.which("xdg-open") or shutil.which("open")
+            if not opener:
+                self.ui.info(self.tr.t("open_path", url=url))
+                return
+            subprocess.Popen([opener, url], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            self.ui.info(self.tr.t("opening", url=url))
+            return
+        self.list_links()
+
+    def list_links(self):
+        if not self.links:
+            self.ui.err(self.tr.t("links_empty"))
+            return
+        rows = [f"{i + 1}) {url}" for i, url in enumerate(self.links[-20:])]
+        self.ui.info(self.tr.t("links_header") + "\n" + "\n".join(rows)
+                     + "\n" + self.tr.t("links_hint"))
 
     def run(self, host, port):
         if not self.connect(host, port):

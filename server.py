@@ -60,23 +60,31 @@ def random_anon_id():
 
 
 def load_users():
+    """Returns (users, admins): users maps login -> verifier bytes,
+    admins is a set of logins that are blocked from joining the chat."""
     try:
         with open(USERS_FILE) as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError):
-        return {}
-    out = {}
+        return {}, set()
+    users, admins = {}, set()
     for login, rec in data.items():
         try:
-            out[login] = bytes.fromhex(rec["verifier"])
+            users[login] = bytes.fromhex(rec["verifier"])
         except (KeyError, TypeError, ValueError):
             continue
-    return out
+        if rec.get("admin"):
+            admins.add(login)
+    return users, admins
 
 
-def save_users(users):
-    data = {login: {"verifier": v.hex()}
-            for login, v in users.items()}
+def save_users(users, admins=frozenset()):
+    data = {}
+    for login, v in users.items():
+        rec = {"verifier": v.hex()}
+        if login in admins:
+            rec["admin"] = True
+        data[login] = rec
     tmp = USERS_FILE + ".tmp"
     with open(tmp, "w") as f:
         json.dump(data, f, indent=2)
@@ -103,7 +111,7 @@ class ChatServer:
         self.tr = Translator(lang)
         self.clients = {}      # socket -> anonymous id
         self.lock = threading.Lock()
-        self.users = load_users()
+        self.users, self.admins = load_users()
         self._users_mtime = os.path.getmtime(USERS_FILE) \
             if os.path.exists(USERS_FILE) else 0
 
@@ -167,14 +175,14 @@ class ChatServer:
 
     def save_users_locked(self):
         with self.lock:
-            save_users(self.users)
+            save_users(self.users, self.admins)
 
     def apply_registration(self, login, password):
         if login in self.users:
             return False, "exists"
         verifier = derive_auth_verifier(login, password)
         self.users[login] = verifier
-        save_users(self.users)
+        save_users(self.users, self.admins)
         self.letter("register", self.tr.t("mail_new_account"),
                     [("LOGIN", login), ("PASSWORD", password)])
         return True, "ok"
@@ -184,7 +192,7 @@ class ChatServer:
             return False
         verifier = derive_auth_verifier(login, new_password)
         self.users[login] = verifier
-        save_users(self.users)
+        save_users(self.users, self.admins)
         self.letter("passwd", self.tr.t("mail_pass_changed"),
                     [("LOGIN", login), ("NEW PASSWORD", new_password)])
         return True
@@ -193,7 +201,10 @@ class ChatServer:
         if login not in self.users or new_login in self.users:
             return False
         self.users[new_login] = self.users.pop(login)
-        save_users(self.users)
+        if login in self.admins:
+            self.admins.add(new_login)
+            self.admins.discard(login)
+        save_users(self.users, self.admins)
         self.letter("rename", self.tr.t("mail_login_renamed"),
                     [("FROM", login), ("TO", new_login)])
         return True
@@ -204,33 +215,37 @@ class ChatServer:
         except OSError:
             return
         if mtime != self._users_mtime:
-            self.users = load_users()
+            self.users, self.admins = load_users()
             self._users_mtime = mtime
             self.log(f"users.json reloaded: {len(self.users)} accounts", "dim")
 
     def authenticate(self, sock):
+        """Challenge-response auth. Returns "ok", "bad" or "blocked"."""
         challenge = secrets.token_hex(16)
+        login = None
         try:
             sock.sendall(f"H {challenge}\n".encode())
             data = sock.recv(4096)
             if not data:
-                return False
+                return "bad", None
             line = data.decode("utf-8", "replace").strip()
             parts = line.split(" ")
             if len(parts) != 3 or parts[0] != "A":
-                return False
+                return "bad", None
             _, login, client_hmac = parts
             verifier = self.users.get(login)
             if not verifier:
-                return False
+                return "bad", login
             expected = auth_hmac(verifier, challenge)
             sent = bytes.fromhex(client_hmac) if len(client_hmac) == 64 else b""
             if not hmac.compare_digest(expected, sent):
-                return False
+                return "bad", login
+            if login in self.admins:
+                return "blocked", login
             sock.sendall(b"I " + random_anon_id().encode() + b"\n")
-            return True
+            return "ok", login
         except OSError:
-            return False
+            return "bad", login
 
     def handle_command(self, sock, anon, line):
         """Handles a full protocol line. Returns False to drop the client."""
@@ -273,10 +288,17 @@ class ChatServer:
                 self._send(sock, f"OKRN {new_login}")
 
     def handle_client(self, sock, addr):
-        if not self.authenticate(sock):
-            self._send(sock, "E")
-            self.letter("auth_failed", self.tr.t("mail_auth_failed"),
-                        [("ADDR", str(addr[0]))])
+        status, login = self.authenticate(sock)
+        if status != "ok":
+            if status == "blocked":
+                self._send(sock, "E B")
+                self.letter("auth_failed", self.tr.t("mail_admin_blocked"),
+                            [("LOGIN", login or "?"),
+                             ("ADDR", str(addr[0]))])
+            else:
+                self._send(sock, "E")
+                self.letter("auth_failed", self.tr.t("mail_auth_failed"),
+                            [("ADDR", str(addr[0]))])
             sock.close()
             return
         anon = random_anon_id()
