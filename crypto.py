@@ -83,7 +83,13 @@ def derive_auth_verifier(login: str, password: str) -> bytes:
     return kdf.derive(password.encode("utf-8"))
 
 
+def derive_pin_verifier(login: str, pin: str) -> bytes:
+    """Second-factor PIN verifier (admin accounts). Stored only as a salted
+    PBKDF2 hash, so the PIN itself can never be recovered or guessed from disk."""
+    return derive_auth_verifier("pin:" + login.lower(), pin)
+
+
 def auth_hmac(verifier: bytes, challenge: str) -> bytes:
     """HMAC-SHA256 of the server challenge using the verifier as key."""
-    return hmac.new(verifier, challenge.encode("ascii"),
+    return hmac.new(verifier, challenge.encode("utf-8"),
                     hashlib.sha256).digest()

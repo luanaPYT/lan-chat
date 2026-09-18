@@ -19,7 +19,7 @@ import os
 import secrets
 import string
 
-from crypto import derive_auth_verifier
+from crypto import derive_auth_verifier, derive_pin_verifier
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
@@ -113,6 +113,21 @@ def cmd_set_admin(args):
     return 0
 
 
+def cmd_set_pin(args):
+    users = load()
+    if args.name not in users:
+        print(f"no such account: '{args.name}'")
+        return 1
+    if args.pin:
+        users[args.name]["pin"] = derive_pin_verifier(args.name, args.pin).hex()
+    else:
+        users[args.name].pop("pin", None)
+    save(users)
+    print(f"PIN for '{args.name}': {'set' if args.pin else 'removed'} "
+          f"(stored as salted PBKDF2 hash)")
+    return 0
+
+
 def cmd_remove(args):
     users = load()
     if args.name not in users:
@@ -144,11 +159,12 @@ def cmd_list(args):
     if not users:
         print("no accounts yet - run: python3 manage_users.py generate 15")
         return 0
-    print(f"{'LOGIN':<18} {'ROLE':<10} VERIFIER (first 16 bytes)")
-    print("-" * 56)
+    print(f"{'LOGIN':<18} {'ROLE':<10} {'PIN':<6} VERIFIER (first 16 bytes)")
+    print("-" * 62)
     for login, rec in sorted(users.items()):
         role = "ADMIN" if rec.get("admin") else "user"
-        print(f"{login:<18} {role:<10} {rec['verifier'][:32]}...")
+        has_pin = "yes" if rec.get("pin") else "-"
+        print(f"{login:<18} {role:<10} {has_pin:<6} {rec['verifier'][:32]}...")
 
 
 def main():
@@ -182,6 +198,12 @@ def main():
     sa.add_argument("--no", dest="yes", action="store_false", default=True,
                     help="remove the admin flag instead")
     sa.set_defaults(fn=cmd_set_admin)
+
+    sp = sub.add_parser("set-pin", help="set/remove the admin 2nd-factor PIN")
+    sp.add_argument("name")
+    sp.add_argument("pin", nargs="?", default=None,
+                    help="PIN value; omit to remove the PIN")
+    sp.set_defaults(fn=cmd_set_pin)
 
     rn = sub.add_parser("rename", help="rename an account login")
     rn.add_argument("old")

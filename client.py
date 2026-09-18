@@ -18,7 +18,9 @@ Commands (type at the prompt):
 """
 
 import argparse
+import colorsys
 import getpass
+import hashlib
 import json
 import os
 import re
@@ -32,7 +34,8 @@ import uuid
 
 from i18n import Translator, LANGUAGES
 from crypto import (new_fernet, encrypt, decrypt, encrypt_bin, decrypt_bin,
-                    EncryptionError, derive_auth_verifier, auth_hmac)
+                    EncryptionError, derive_auth_verifier, derive_pin_verifier,
+                    auth_hmac)
 
 DISCOVERY_PORT_OFFSET = 1000
 MAGIC = "LANCHAT_DISCOVERY"
@@ -58,6 +61,43 @@ def truncate(text, width):
     if len(text) <= width:
         return text
     return text[: width - 1] + "\u2026"
+
+
+def stable_seed(text):
+    """Deterministic hash across processes (hash() is randomized)."""
+    return int.from_bytes(hashlib.md5(text.encode("utf-8")).digest()[:4],
+                          "big")
+
+
+def hsv_rgb(hue, sat=0.85, val=0.92):
+    h1 = (hue % 360) / 360.0
+    return tuple(int(c * 255) for c in colorsys.hsv_to_rgb(h1, sat, val))
+
+
+def gradient_text(text, seed, spread=42):
+    """Render text as a smooth hue gradient (truecolor)."""
+    h0 = stable_seed(seed) % 360
+    h1 = (h0 + spread) % 360
+    n = max(1, len(text))
+    out = []
+    for i, ch in enumerate(text):
+        t = i / (n - 1) if n > 1 else 0
+        hue = h0 + (h1 - h0) * t
+        r, g, b = hsv_rgb(hue)
+        out.append(f"\033[38;2;{r};{g};{b}m{ch}")
+    return "".join(out) + "\033[0m"
+
+
+def truecolor():
+    return os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit")
+
+
+def name_colored(name, seed):
+    """Gradient name when supported, else the fixed palette color."""
+    if truecolor():
+        return gradient_text(name, seed)
+    c = NAME_PALETTE[stable_seed(seed) % len(NAME_PALETTE)]
+    return f"{FGC.format(c=c)}{name}\033[0m"
 
 
 def human_size(n):
@@ -142,9 +182,10 @@ class ChatUI:
         if self.color:
             caret = "\u27a4" if mine else "\u25c6"
             tag = "🔒" if private else ""
-            nl = f"{FGC.format(c=name_color)}{self.c('bold')}{tag} {caret} {n}"
+            nl = (self.c("bold") + tag + " " + caret + " "
+                  + name_colored(n, seed=name))
             msg = truncate(highlight_urls(text), max(10, self.width - len(n) - 4))
-            line = nl + self.c("reset") + " " + msg
+            line = nl + " " + msg
         else:
             tag = "you" if mine else (f"priv {n}" if private else n)
             line = f"\u25c6 {tag}: {text}"
@@ -159,8 +200,7 @@ class ChatUI:
                     f"🔒 {self.c('reset')}"
                     f"{self.c('magenta')}{truncate(label, 30)}"
                     f"{self.c('reset')}\n"
-                    f"  {FGC.format(c=name_color)}{self.c('bold')}{name}"
-                    f"{self.c('reset')}: "
+                    f"  {name_colored(name, seed=name)}: "
                     f"{truncate(highlight_urls(text), max(10, self.width - 6))}")
         else:
             line = f"🔒 {label}: {text}"
@@ -276,11 +316,12 @@ class ChatUI:
 
 class ChatClient:
     def __init__(self, host, port, name, login, account_pass,
-                 group_key, lang, color):
+                 group_key, lang, color, pin=None):
         self.tr = Translator(lang)
         self.ui = ChatUI(lang, color)
         self.fernet = new_fernet(group_key)
         self.auth_key = derive_auth_verifier(login, account_pass)
+        self.pin = pin
         self.name = name
         self.login = login
         self.sock = None
@@ -349,11 +390,30 @@ class ChatClient:
         resp = self._recv_line()
         if not resp:
             return "bad"
+        if resp.startswith("P"):
+            pin = self.pin or getpass.getpass(self.tr.t("pin_prompt") + " ")
+            if not pin:
+                return "bad"
+            pin_verifier = derive_pin_verifier(self.login, pin)
+            try:
+                self.sock.sendall(f"K {auth_hmac(pin_verifier, nonce).hex()}\n"
+                                  .encode())
+            except OSError:
+                return "bad"
+            resp = self._recv_line()
+        if not resp:
+            return "bad"
         if resp.startswith("E B"):
             return "blocked"
         if not resp.startswith("I "):
             return "bad"
         self.anon_id = resp[2:].strip()
+        self.is_admin = False
+        self.admin_key = None
+        if " K:" in resp:
+            self.anon_id, _, keypart = resp[2:].partition(" K:")
+            self.is_admin = True
+            self.admin_key = keypart.strip()
         return "ok"
 
     def _tcp_connect(self, host, port):
@@ -529,6 +589,8 @@ class ChatClient:
         elif line.startswith("X "):
             anon = line[2:].strip()
             self.ui.system(self.tr.t("anon_left_msg"), "red")
+        elif line.startswith("! "):
+            self.ui.system(line[2:].strip(), "red")
         elif line.startswith("U "):
             self.online = line[2:].split()
             self.ui.system(self.tr.t("online") + " " + ", ".join(self.online))
@@ -764,6 +826,8 @@ def main():
                         help="account login from users.json")
     parser.add_argument("--pass", dest="account_pass", default=None,
                         help="account password (alternative to prompt)")
+    parser.add_argument("--pin", default=None,
+                        help="second-factor PIN for admin accounts")
     parser.add_argument("--groupkey", default=None,
                         help="shared group passphrase for E2E encryption")
     parser.add_argument("--no-color", action="store_true")
@@ -781,7 +845,7 @@ def main():
         args.name = login
 
     client = ChatClient(args.host, args.port, args.name, login, account_pass,
-                        group_key, args.lang, not args.no_color)
+                        group_key, args.lang, not args.no_color, pin=args.pin)
     try:
         client.run(args.host, args.port)
     except KeyboardInterrupt:
