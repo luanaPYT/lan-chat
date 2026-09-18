@@ -23,8 +23,12 @@ too. Only you and your friends know the group passphrase.
 | 🕵️ **Anonymity** | The server never sees real names or message content. Users appear as random `ANON-XXXX` ids to the server. |
 | 📡 **Auto-discovery** | No IP needed — clients find the server over UDP broadcast on the LAN. |
 | 🌍 **3 languages** | English, Русский, العربية (choose with `--lang`). |
-| 👥 **15 accounts** | only registered logins/passwords can join (`manage_users.py`); stored as PBKDF2 verifiers, never plaintext. |
-| 🎨 **Pretty terminal UI** | Colored names, box header, RTL-friendly, raw-mode input, `~/users`/`/clear` commands. |
+| 👥 **25 accounts** | only registered logins/passwords can join (`manage_users.py`); stored as PBKDF2 verifiers, never plaintext. |
+| 💬 **Private messages** | `/dm <name> <msg>` and `/r <msg>` replies — shown only to the target. |
+| 📁 **File transfer** | `/send <path>` sends photos/documents in encrypted chunks to the downloads/ folder. |
+| 👤 **Self-service** | `/register`, `/passwd`, `/rename` right from the chat. |
+| 📬 **Admin mailbox** | every registration / password change / rename lands as a fancy "letter" in the server terminal + `mailbox.log`. |
+| 🎨 **Pretty terminal UI** | Colored names, box header, RTL-friendly, raw-mode input, many commands. |
 | 📦 **Zero server setup** | Python stdlib + one dependency (`cryptography`). No database, no web server. |
 
 ---
@@ -83,12 +87,13 @@ PBKDF2 verifiers — **plaintext is never saved or sent over the network**
 Manage accounts with `manage_users.py`:
 
 ```bash
-python3 manage_users.py generate 15      # create 15 accounts (prints login/password)
+python3 manage_users.py generate 25      # create up to 25 accounts (prints login/password)
 python3 manage_users.py add alice        # +1 account (random password)
 python3 manage_users.py add bob --password s3cret
 python3 manage_users.py reset alice      # reset password
-python3 manage_users.py list             # show accounts
+python3 manage_users.py rename alice al  # rename login
 python3 manage_users.py remove alice     # delete account
+python3 manage_users.py list             # show accounts
 ```
 
 Users are added/removed live — the server auto-reloads `users.json`.
@@ -96,11 +101,21 @@ Users are added/removed live — the server auto-reloads `users.json`.
 ### Commands (while chatting)
 
 ```
-/exit   /quit   leave the chat
-/users           show who is online (anonymous ids)
-/clear           clear the screen
-/help            show help
+/dm <name> <msg>   private message (only the target sees it)
+/r <msg>           reply to the last sender
+/send <path>       send a file (photos, documents)
+/users             show who is online (anonymous ids)
+/nick <name>       change your display name
+/passwd <pass>     change your account password
+/rename <login>    change your account login
+/register <l> <p>  register a new account (notifies the admin!)
+/clear             clear the screen
+/help              show help
+/exit              leave the chat
 ```
+
+Every registration, password change and rename is delivered to the **admin
+terminal** as a mailbox letter and appended to `mailbox.log`.
 
 ---
 
@@ -129,11 +144,14 @@ Users are added/removed live — the server auto-reloads `users.json`.
 
 ```
 lan-chat/
-├── server.py        # blind-relay TCP chat server (+ auth + UDP discovery)
-├── client.py        # pretty raw-mode terminal client (+ login)
-├── crypto.py        # PBKDF2 key derivation + AES (Fernet) + challenge-response auth
+├── server.py        # blind-relay TCP server (+ auth + mailbox + self-service)
+├── client.py        # pretty raw-mode terminal client (+ DM, files)
+├── crypto.py        # PBKDF2 + AES (Fernet) + challenge-response auth
 ├── i18n.py          # en / ru / ar translations
-├── manage_users.py  # create/manage the 15 accounts (users.json)
+├── manage_users.py  # create/manage the accounts (users.json)
+├── users.json       # account verifiers (gitignored, never committed)
+├── mailbox.log      # admin mailbox: registrations/password/renames
+├── downloads/       # received files land here
 └── requirements.txt # cryptography
 ```
 

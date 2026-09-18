@@ -4,10 +4,11 @@
 Stores only PBKDF2 verifiers - plaintext passwords are never saved.
 
 Usage:
-    python3 manage_users.py generate 15          create 15 accounts
+    python3 manage_users.py generate 20          create up to 20 accounts (adds missing)
     python3 manage_users.py add alice            add one account
     python3 manage_users.py add bob --password s3cret
     python3 manage_users.py reset alice          reset password for alice
+    python3 manage_users.py rename alice al      rename login
     python3 manage_users.py remove alice         delete account
     python3 manage_users.py list                 show accounts
 """
@@ -52,18 +53,23 @@ def random_password(n=10):
 
 def cmd_generate(args):
     users = load()
-    created = []
+    created, skipped = [], []
     for i in range(1, args.count + 1):
         login = args.prefix + str(i).zfill(2)
+        if login in users:
+            skipped.append(login)
+            continue
         password = random_password(args.password_len)
         add_user(users, login, password)
         created.append((login, password))
-    print(f"created {len(created)} accounts in {USERS_FILE}")
-    print("-" * 42)
-    print(f"{'LOGIN':<14} {'PASSWORD':<22}  ID")
-    for i, (login, password) in enumerate(created, 1):
-        print(f"{login:<14} {password:<22}  user{i:02d}")
-    print("-" * 42)
+    print(f"created {len(created)} accounts in {USERS_FILE}"
+          f"{', skipped existing: ' + ', '.join(skipped) if skipped else ''}")
+    if created:
+        print("-" * 42)
+        print(f"{'LOGIN':<14} {'PASSWORD':<22}  ID")
+        for i, (login, password) in enumerate(created, 1):
+            print(f"{login:<14} {password:<22}  user{i:02d}")
+        print("-" * 42)
 
 
 def cmd_add(args):
@@ -103,6 +109,21 @@ def cmd_remove(args):
     return 0
 
 
+def cmd_rename(args):
+    users = load()
+    if args.old not in users:
+        print(f"no such account: '{args.old}'")
+        return 1
+    if args.new in users:
+        print(f"login '{args.new}' already exists")
+        return 1
+    verifier = users.pop(args.old)
+    users[args.new] = verifier
+    save(users)
+    print(f"renamed '{args.old}' → '{args.new}' (password kept)")
+    return 0
+
+
 def cmd_list(args):
     users = load()
     if not users:
@@ -139,6 +160,11 @@ def main():
     rm = sub.add_parser("remove", help="delete an account")
     rm.add_argument("name")
     rm.set_defaults(fn=cmd_remove)
+
+    rn = sub.add_parser("rename", help="rename an account login")
+    rn.add_argument("old")
+    rn.add_argument("new")
+    rn.set_defaults(fn=cmd_rename)
 
     l = sub.add_parser("list", help="list accounts")
     l.set_defaults(fn=cmd_list)

@@ -52,6 +52,17 @@ def decrypt(fernet: Fernet, token: str) -> str:
         raise EncryptionError(f"wrong passphrase or corrupted data: {e}")
 
 
+def encrypt_bin(fernet: Fernet, data: bytes) -> str:
+    return fernet.encrypt(data).decode("ascii")
+
+
+def decrypt_bin(fernet: Fernet, token: str) -> bytes:
+    try:
+        return fernet.decrypt(token.encode("ascii"))
+    except (InvalidToken, ValueError) as e:
+        raise EncryptionError(f"corrupted file chunk: {e}")
+
+
 # --- account authentication (challenge-response, SCRAM-like) ---------------
 
 
