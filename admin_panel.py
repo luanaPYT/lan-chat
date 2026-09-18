@@ -113,6 +113,8 @@ class AdminPanel(ChatClient):
         super().__init__(*args, **kwargs)
         self.online = []
         self._groupkey_ok = False  # set by main() when a group key was given
+        self.ui.commands = ["/anons", "/accounts", "/kick", "/msg",
+                            "/refresh", "/help", "/exit"]
 
     # --- incoming lines ----------------------------------------------------
 

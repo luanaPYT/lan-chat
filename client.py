@@ -129,20 +129,52 @@ class ChatUI:
         self.buffer = ""
         self.lock = threading.Lock()
         self.width = shutil.get_terminal_size((80, 24)).columns
+        self.commands = []
+        self._hint_drawn = False
 
     def c(self, name):
         return COLORS[name] if self.color else ""
 
     def clear_line(self):
         sys.stdout.write("\r\033[2K")
+
+    def _clear_input_area(self):
+        """Clear the hint line (if shown) and the prompt line, leaving the
+        cursor where the prompt starts."""
+        if self._hint_drawn:
+            sys.stdout.write("\r\033[2K\x1b[F")
+            sys.stdout.flush()
+            self._hint_drawn = False
+        self.clear_line()
+
+    def _matching_commands(self):
+        if not self.buffer.startswith("/"):
+            return []
+        return [c for c in self.commands if c.startswith(self.buffer)]
+
+    def _render_hint(self):
+        if not self.buffer.startswith("/"):
+            return
+        if self.buffer.endswith(" "):
+            return
+        matches = self._matching_commands()
+        if matches:
+            text = "   ".join(matches)
+        else:
+            text = self.tr.t("no_cmd_hint")
+        sys.stdout.write("\n" + truncate(
+            self.c("dim") + text + self.c("reset"), self.width))
+        sys.stdout.flush()
+        self._hint_drawn = True
         sys.stdout.flush()
 
     def _write(self, s):
         with self.lock:
-            self.clear_line()
+            self._clear_input_area()
             sys.stdout.write(s + "\n")
             sys.stdout.flush()
             self._render_prompt()
+            self._render_hint()
 
     def _render_prompt(self):
         line = truncate(self.prompt + self.buffer, self.width)
@@ -279,9 +311,19 @@ class ChatUI:
                 if ch == b"\x1b":
                     self._discard_escape(fd, b"\x1b")
                     continue
+                if ch == b"\t":
+                    pending = b""
+                    if self.buffer.startswith("/"):
+                        matches = self._matching_commands()
+                        if len(matches) == 1:
+                            self.buffer = matches[0] + " "
+                        self._reprint_prompt()
+                    continue
                 pending += ch
                 if ch in (b"\r", b"\n"):
-                    return self.buffer
+                    line = self.buffer
+                    self.buffer = ""
+                    return line
                 if ch == b"\x7f":
                     if pending == b"\x7f":
                         if self.buffer:
@@ -310,8 +352,9 @@ class ChatUI:
 
     def _reprint_prompt(self):
         with self.lock:
-            self.clear_line()
+            self._clear_input_area()
             self._render_prompt()
+            self._render_hint()
 
 
 class ChatClient:
@@ -332,6 +375,9 @@ class ChatClient:
         self.known_names = {}       # anon -> display name
         self.file_incoming = {}     # file_id -> state
         self.links = []             # collected URLs shown in chat
+        self.ui.commands = ["/nick", "/dm", "/msg", "/r", "/send", "/open",
+                            "/links", "/passwd", "/rename", "/register",
+                            "/help", "/users", "/clear", "/exit"]
 
     # networking ------------------------------------------------------------
 
