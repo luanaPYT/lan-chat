@@ -29,6 +29,12 @@ TRANSLATIONS = {
         "anon_left_msg": "An anonymous user left the chat",
         "help": "/exit, /quit  leave the chat\n/users           show online users\n/clear          clear the screen\n/help           show this help",
         "pass_mismatch": "Wrong passphrase - the server cannot decode traffic.",
+        "auth_failed": "[!] denied login from {addr}",
+        "accounts_loaded": "{count} accounts loaded",
+        "enter_login": "Login: ",
+        "enter_account_pass": "Account password: ",
+        "enter_groupkey": "Group passphrase (must match everyone): ",
+        "wrong_credentials": "Wrong login or password.",
     },
     "ru": {
         "language_name": "Русский",
@@ -57,6 +63,12 @@ TRANSLATIONS = {
         "anon_left_msg": "Анонимный пользователь покинул чат",
         "help": "/exit, /quit  выйти из чата\n/users      показать кто онлайн\n/clear      очистить экран\n/help       эта справка",
         "pass_mismatch": "Неверный пароль - сервер не может расшифровать трафик.",
+        "auth_failed": "[!] отказ входа от {addr}",
+        "accounts_loaded": "Загружено аккаунтов: {count}",
+        "enter_login": "Логин: ",
+        "enter_account_pass": "Пароль аккаунта: ",
+        "enter_groupkey": "Общий пароль чата (одинаковый у всех): ",
+        "wrong_credentials": "Неверный логин или пароль.",
     },
     "ar": {
         "language_name": "العربية",
@@ -85,6 +97,12 @@ TRANSLATIONS = {
         "anon_left_msg": "غادر مستخدم مجهول الدردشة",
         "help": "/exit, /quit  غادر الدردشة\n/users      أظهر من هو متصل\n/clear      امسح الشاشة\n/help       هذه المساعدة",
         "pass_mismatch": "كلمة المرور خاطئة - لا يمكن فك تشفير حركة المرور.",
+        "auth_failed": "[!] رفض الدخول من {addr}",
+        "accounts_loaded": "تم تحميل الحسابات: {count}",
+        "enter_login": "اسم المستخدم: ",
+        "enter_account_pass": "كلمة مرور الحساب: ",
+        "enter_groupkey": "كلمة مرور المجموعة (يجب أن تتطابق مع الجميع): ",
+        "wrong_credentials": "اسم مستخدم أو كلمة مرور خاطئة.",
     },
 }
 

@@ -23,6 +23,7 @@ too. Only you and your friends know the group passphrase.
 | 🕵️ **Anonymity** | The server never sees real names or message content. Users appear as random `ANON-XXXX` ids to the server. |
 | 📡 **Auto-discovery** | No IP needed — clients find the server over UDP broadcast on the LAN. |
 | 🌍 **3 languages** | English, Русский, العربية (choose with `--lang`). |
+| 👥 **15 accounts** | only registered logins/passwords can join (`manage_users.py`); stored as PBKDF2 verifiers, never plaintext. |
 | 🎨 **Pretty terminal UI** | Colored names, box header, RTL-friendly, raw-mode input, `~/users`/`/clear` commands. |
 | 📦 **Zero server setup** | Python stdlib + one dependency (`cryptography`). No database, no web server. |
 
@@ -61,15 +62,36 @@ python3 client.py                # auto-discovers the server
 # or specify the server directly:
 python3 client.py --host 192.168.1.10
 ```
-Set your display name, then enter the **group passphrase** — it must be the
-**same for everyone**. That passphrase is the key; without it nobody can read
-the chat, including the server host.
+You will be asked for:
+1. a **login / password** — an account from `users.json` (see below);
+2. a **display name**;
+3. the **group passphrase** — the same for everyone; it is the E2E
+   key, without it nobody can read the chat (not even the server host).
 
 Options:
 ```bash
-python3 client.py --name Alice --lang ar --port 7777
+python3 client.py --login user01 --name Alice --lang ar --port 7777
 python3 client.py --host 192.168.1.10 --no-color
 ```
+
+### 👥 Accounts (15 logins & passwords)
+
+The server only lets registered accounts in. Passwords are stored as
+PBKDF2 verifiers — **plaintext is never saved or sent over the network**
+(login uses a challenge-response handshake).
+
+Manage accounts with `manage_users.py`:
+
+```bash
+python3 manage_users.py generate 15      # create 15 accounts (prints login/password)
+python3 manage_users.py add alice        # +1 account (random password)
+python3 manage_users.py add bob --password s3cret
+python3 manage_users.py reset alice      # reset password
+python3 manage_users.py list             # show accounts
+python3 manage_users.py remove alice     # delete account
+```
+
+Users are added/removed live — the server auto-reloads `users.json`.
 
 ### Commands (while chatting)
 
@@ -107,10 +129,11 @@ python3 client.py --host 192.168.1.10 --no-color
 
 ```
 lan-chat/
-├── server.py        # blind-relay TCP chat server (+ UDP discovery)
-├── client.py        # pretty raw-mode terminal client
-├── crypto.py        # PBKDF2 key derivation + AES (Fernet) encrypt/decrypt
+├── server.py        # blind-relay TCP chat server (+ auth + UDP discovery)
+├── client.py        # pretty raw-mode terminal client (+ login)
+├── crypto.py        # PBKDF2 key derivation + AES (Fernet) + challenge-response auth
 ├── i18n.py          # en / ru / ar translations
+├── manage_users.py  # create/manage the 15 accounts (users.json)
 └── requirements.txt # cryptography
 ```
 
@@ -120,8 +143,8 @@ lan-chat/
 
 ```bash
 python3 server.py --port 5923 &
-python3 client.py --host 127.0.0.1 --port 5923 --name Alice &
-python3 client.py --host 127.0.0.1 --port 5923 --name Bob   &
+python3 client.py --host 127.0.0.1 --port 5923 --login user01 --pass pass1 --groupkey g &
+python3 client.py --host 127.0.0.1 --port 5923 --login user02 --pass pass2 --groupkey g &
 ```
 
 ---
@@ -161,10 +184,11 @@ python3 server.py --port 7777 --lang ru
 
 **Клиенты (все остальные):**
 ```bash
-python3 client.py                 # автоопределение сервера
-python3 client.py --host 192.168.1.10 --name Дима --lang ru
+python3 client.py --login user01 --name Дима --lang ru
+python3 client.py --host 192.168.1.10 --login user01 --name Дима --lang ru
 ```
-Введите своё имя и **общий пароль группы** — он одинаковый у всех. Без него
+Введите пароль аккаунта и **общий пароль группы** — он одинаковый у всех. Без
+пароля аккаунта не пустит сервер, а общий пароль шифрует сообщения: без него
 никто не сможет прочитать чат, даже владелец сервера.
 
 ### Команды
@@ -174,6 +198,9 @@ python3 client.py --host 192.168.1.10 --name Дима --lang ru
 /clear         очистить экран
 /help          справка
 ```
+
+**Аккаунты:** `python3 manage_users.py generate 15` создаёт 15 логинов/паролей
+(на сервере хранятся только PBKDF2-проверочные значения, без паролей в открытом виде).
 
 ---
 
@@ -206,10 +233,11 @@ python3 server.py --port 7777 --lang ar
 
 **العملاء (كل الباقين):**
 ```bash
-python3 client.py                  # اكتشاف تلقائي للخادم
-python3 client.py --host 192.168.1.10 --name أحمد --lang ar
+python3 client.py --login user01 --name أحمد --lang ar
+python3 client.py --host 192.168.1.10 --login user01 --name أحمد --lang ar
 ```
-أدخل اسمك ثم **كلمة مرور المجموعة** — يجب أن تكون متطابقة عند الجميع. بدونها لا
+أدخل كلمة مرور الحساب ثم **كلمة مرور المجموعة** — يجب أن تكون متطابقة عند الجميع.
+كلمة مرور الحساب تسمح بالدخول، وكلمة مرور المجموعة تشفّر الرسائل؛ بدونها لا
 يستطيع أحد قراءة الدردشة، حتى مشغّل الخادم.
 
 ### الأوامر
@@ -219,6 +247,9 @@ python3 client.py --host 192.168.1.10 --name أحمد --lang ar
 /clear         امسح الشاشة
 /help          المساعدة
 ```
+
+**الحسابات:** الأمر `python3 manage_users.py generate 15` ينشئ 15 حسابًا
+(اسم مستخدم/كلمة مرور). على الخادم تُحفظ قيم تحقق PBKDF2 فقط، لا كلمات مرور نصية.
 
 ---
 

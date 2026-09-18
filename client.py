@@ -29,7 +29,8 @@ import threading
 import time
 
 from i18n import Translator, LANGUAGES
-from crypto import new_fernet, encrypt, decrypt, EncryptionError
+from crypto import (new_fernet, encrypt, decrypt, EncryptionError,
+                    derive_auth_verifier, auth_hmac)
 
 DISCOVERY_PORT_OFFSET = 1000
 MAGIC = "LANCHAT_DISCOVERY"
@@ -216,11 +217,14 @@ class ChatUI:
 
 
 class ChatClient:
-    def __init__(self, host, port, name, lang, passphrase, color):
+    def __init__(self, host, port, name, login, account_pass,
+                 group_key, lang, color):
         self.tr = Translator(lang)
         self.ui = ChatUI(lang, color)
-        self.fernet = new_fernet(passphrase)
+        self.fernet = new_fernet(group_key)
+        self.auth_key = derive_auth_verifier(login, account_pass)
         self.name = name
+        self.login = login
         self.sock = None
         self.anon_id = None
         self.online = []
@@ -239,16 +243,52 @@ class ChatClient:
             self.ui._write("")
             self._tcp_connect(*found)
         self.sock.settimeout(None)
+        if not self._authenticate():
+            self.ui.err(self.tr.t("wrong_credentials"))
+            try:
+                self.sock.close()
+            except OSError:
+                pass
+            return False
         self.ui.draw_header(host or self._shown_host, port,
                             self.tr.t("language_name"))
+        return True
+
+    def _recv_line(self, timeout=8):
+        self.sock.settimeout(timeout)
+        buf = b""
+        try:
+            while b"\n" not in buf:
+                chunk = self.sock.recv(4096)
+                if not chunk:
+                    return None
+                buf += chunk
+            line, _ = buf.split(b"\n", 1)
+            return line.decode("utf-8", "replace").strip()
+        except OSError:
+            return None
+        finally:
+            self.sock.settimeout(None)
+
+    def _authenticate(self):
+        challenge = self._recv_line()
+        if not challenge or not challenge.startswith("H "):
+            return False
+        nonce = challenge[2:].strip()
+        hmac_hex = auth_hmac(self.auth_key, nonce).hex()
+        try:
+            self.sock.sendall(f"A {self.login} {hmac_hex}\n".encode())
+        except OSError:
+            return False
+        resp = self._recv_line()
+        if not resp or not resp.startswith("I "):
+            return False
+        self.anon_id = resp[2:].strip()
         return True
 
     def _tcp_connect(self, host, port):
         self._shown_host = host
         self.sock = socket.create_connection((host, port), timeout=5)
-        buf = self.sock.recv(1024)
-        if buf.startswith(b"I "):
-            self.anon_id = buf[2:].strip().decode()
         self.sock.settimeout(None)
 
     def _discover(self, port):
@@ -400,8 +440,12 @@ def main():
     parser.add_argument("--name", default=None,
                         help="your display name (default: random)")
     parser.add_argument("--lang", default="en", choices=LANGUAGES)
-    parser.add_argument("--pass", dest="passphrase", default=None,
-                        help="shared group passphrase (alternative to prompt)")
+    parser.add_argument("--login", default=None,
+                        help="account login from users.json")
+    parser.add_argument("--pass", dest="account_pass", default=None,
+                        help="account password (alternative to prompt)")
+    parser.add_argument("--groupkey", default=None,
+                        help="shared group passphrase for E2E encryption")
     parser.add_argument("--no-color", action="store_true")
     args = parser.parse_args()
 
@@ -412,11 +456,14 @@ def main():
         name = input(tr.t("enter_name") + " ")
         name = name.strip() or "Ghost_" + os.urandom(2).hex().upper()
 
-    passphrase = args.passphrase or getpass.getpass(
-        tr.t("enter_pass") + " ")
+    login = args.login or input(tr.t("enter_login") + " ").strip()
+    account_pass = args.account_pass or getpass.getpass(
+        tr.t("enter_account_pass") + " ")
+    group_key = args.groupkey or getpass.getpass(
+        tr.t("enter_groupkey") + " ")
 
-    client = ChatClient(args.host, args.port, name, args.lang,
-                        passphrase, not args.no_color)
+    client = ChatClient(args.host, args.port, name, login, account_pass,
+                        group_key, args.lang, not args.no_color)
     try:
         client.run(args.host, args.port)
     except KeyboardInterrupt:

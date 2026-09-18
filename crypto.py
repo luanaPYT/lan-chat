@@ -10,6 +10,8 @@ ciphertext, so it cannot read names or message contents
 """
 
 import base64
+import hashlib
+import hmac
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
@@ -48,3 +50,29 @@ def decrypt(fernet: Fernet, token: str) -> str:
         return fernet.decrypt(token.encode("ascii")).decode("utf-8")
     except (InvalidToken, ValueError) as e:
         raise EncryptionError(f"wrong passphrase or corrupted data: {e}")
+
+
+# --- account authentication (challenge-response, SCRAM-like) ---------------
+
+
+def auth_salt(login: str) -> bytes:
+    """Deterministic per-login salt, so client and server agree on it."""
+    return hashlib.sha256(login.encode("utf-8")).digest()
+
+
+def derive_auth_verifier(login: str, password: str) -> bytes:
+    """Verifier stored by the server. The plaintext password is never stored
+    and never sent over the network."""
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=auth_salt(login),
+        iterations=ITERATIONS,
+    )
+    return kdf.derive(password.encode("utf-8"))
+
+
+def auth_hmac(verifier: bytes, challenge: str) -> bytes:
+    """HMAC-SHA256 of the server challenge using the verifier as key."""
+    return hmac.new(verifier, challenge.encode("ascii"),
+                    hashlib.sha256).digest()

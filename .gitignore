@@ -6,3 +6,5 @@ venv/
 .env
 *.log
 .DS_Store
+users.json
+accounts.txt
