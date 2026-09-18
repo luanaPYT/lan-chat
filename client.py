@@ -915,33 +915,28 @@ def main():
 
     tr = Translator(lang)
 
-    auto = bool(args.login and args.account_pass)
     register_mode = False
-    if auto:
-        login = args.login.strip()
-        account_pass = args.account_pass
-    else:
-        print()
-        print(tr.t("welcome"))
-        choice = input(tr.t("entry_ask") + " ").strip().lower()
-        register_mode = (choice == "2" or choice
-                         in ("r", "p", "р", "ت"))
+    print()
+    print(tr.t("welcome"))
+    choice = input(tr.t("entry_ask") + " ").strip().lower()
+    register_mode = (choice == "2" or choice
+                     in ("r", "p", "р", "ت"))
 
-        if register_mode:
-            login = input(tr.t("enter_new_login") + " ").strip()
-            p1 = args.account_pass or getpass.getpass(tr.t("enter_new_pass") + " ")
-            p2 = getpass.getpass(tr.t("enter_new_pass_repeat") + " ")
-            if p1 != p2:
-                print(tr.t("pass_nomatch"))
-                sys.exit(1)
-            if not (ASCII_ALNUM.match(login) and ASCII_ALNUM.match(p1)):
-                print(tr.t("register_chars"))
-                sys.exit(1)
-            account_pass = p1
-        else:
-            login = args.login or input(tr.t("enter_login") + " ").strip()
-            account_pass = args.account_pass or getpass.getpass(
-                tr.t("enter_account_pass") + " ")
+    if register_mode:
+        login = input(tr.t("enter_new_login") + " ").strip()
+        p1 = getpass.getpass(tr.t("enter_new_pass") + " ")
+        p2 = getpass.getpass(tr.t("enter_new_pass_repeat") + " ")
+        if p1 != p2:
+            print(tr.t("pass_nomatch"))
+            sys.exit(1)
+        if not (ASCII_ALNUM.match(login) and ASCII_ALNUM.match(p1)):
+            print(tr.t("register_chars"))
+            sys.exit(1)
+        account_pass = p1
+    else:
+        login = args.login or input(tr.t("enter_login") + " ").strip()
+        account_pass = args.account_pass or getpass.getpass(
+            tr.t("enter_account_pass") + " ")
     group_key = args.groupkey or getpass.getpass(
         tr.t("enter_groupkey") + " ")
 
