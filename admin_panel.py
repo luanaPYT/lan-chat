@@ -39,6 +39,63 @@ from i18n import LANGUAGES
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
 
+_UI = {
+    "en": {
+        "online": "Online ({}):",
+        "accounts_header": "ACCOUNTS",
+        "col_login": "LOGIN", "col_role": "ROLE", "col_pin": "PIN",
+        "role_admin": "ADMIN", "role_user": "user",
+        "pin_yes": "yes", "pin_no": "-",
+        "total_accounts": "total: {} accounts",
+        "kick_sent": "kick sent: {}",
+        "warning_sent": "warning sent",
+        "type_help": "type /help for commands.",
+        "usage_kick": "usage: /kick <anon>",
+        "usage_msg": "usage: /msg <text>",
+        "need_admin_kick": "kick requires an admin session",
+        "need_admin_msg": "broadcast requires an admin session",
+        "unknown": "unknown: {}",
+        "feed_register": "NEW ACCOUNT", "feed_passwd": "PASSWORD CHANGED",
+        "feed_rename": "RENAME", "feed_auth_failed": "AUTH FAILED",
+        "feed_join": "JOIN", "feed_left": "LEFT", "feed_kick": "KICK",
+        "feed_msg": "BROADCAST",
+        "help":
+            "/anons          online ids\n"
+            "/accounts       users.json (login / role / pin)\n"
+            "/kick <anon>    disconnect a client\n"
+            "/msg <text>     red warning to everyone\n"
+            "/refresh        re-check accounts\n"
+            "/exit           leave panel",
+    },
+    "ru": {
+        "online": "Онлайн ({}):",
+        "accounts_header": "АККАУНТЫ",
+        "col_login": "ЛОГИН", "col_role": "РОЛЬ", "col_pin": "ПИН",
+        "role_admin": "АДМИН", "role_user": "польз.",
+        "pin_yes": "есть", "pin_no": "-",
+        "total_accounts": "всего: {} аккаунтов",
+        "kick_sent": "Кик отправлен: {}",
+        "warning_sent": "Предупреждение разослано",
+        "type_help": "Наберите /help для команд.",
+        "usage_kick": "использование: /kick <anon>",
+        "usage_msg": "использование: /msg <текст>",
+        "need_admin_kick": "кик требует админ-сессию",
+        "need_admin_msg": "рассылка требует админ-сессию",
+        "unknown": "неизвестно: {}",
+        "feed_register": "НОВЫЙ АККАУНТ", "feed_passwd": "СМЕНА ПАРОЛЯ",
+        "feed_rename": "ПЕРЕИМЕНОВАНИЕ", "feed_auth_failed": "ОШИБКА ВХОДА",
+        "feed_join": "ВХОД", "feed_left": "ВЫХОД", "feed_kick": "КИК",
+        "feed_msg": "РАССЫЛКА",
+        "help":
+            "/anons          кто онлайн (id)\n"
+            "/accounts       users.json (логин / роль / пин)\n"
+            "/kick <anon>    отключить клиента\n"
+            "/msg <текст>    красное предупреждение всем\n"
+            "/refresh        перечитать аккаунты\n"
+            "/exit           покинуть панель",
+    },
+}
+
 
 class AdminPanel(ChatClient):
     FEED_COLOR = {
@@ -46,6 +103,11 @@ class AdminPanel(ChatClient):
         "auth_failed": "red", "join": "green", "left": "red",
         "kick": "red", "msg": "cyan",
     }
+
+    def _p(self, key, *args):
+        lang = getattr(self.tr, "lang", "en") or "en"
+        table = _UI.get(lang, _UI["en"])
+        return table.get(key, _UI["en"].get(key, key)).format(*args)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -73,13 +135,14 @@ class AdminPanel(ChatClient):
         kind, ts = parts[0], parts[1]
         fields = [kv.split("=", 1)[-1] if "=" in kv else kv for kv in parts[2:]]
         color = self.FEED_COLOR.get(kind, "dim")
-        title = kind.upper().replace("_", " ")
+        title = self._p("feed_" + kind)
         line = f"\U0001f4cb {title}  [{ts}]  " + " \u00b7 ".join(fields)
         self.ui.system(line, color)
 
     def _show_online(self):
         items = "  ".join(self.online)
-        self.ui.system(f"\U0001f465 Online ({len(self.online)}): {items}", "cyan")
+        self.ui.system(f"\U0001f465 " + self._p("online", len(self.online)),
+                       "cyan")
 
     # --- local admin tools ------------------------------------------------
 
@@ -90,33 +153,34 @@ class AdminPanel(ChatClient):
         except (OSError, json.JSONDecodeError) as e:
             self.ui.err(f"users.json: {e}")
             return
-        rows = [f"{'LOGIN':<16} {'ROLE':<7} {'PIN':<4}",
+        rows = [f"{self._p('col_login'):<16} {self._p('col_role'):<7} "
+                f"{self._p('col_pin'):<4}",
                 "-" * 34]
         for login, rec in sorted(data.items()):
-            role = "ADMIN" if rec.get("admin") else "user"
-            pin = "yes" if rec.get("pin") else "-"
+            role = self._p("role_admin" if rec.get("admin") else "role_user")
+            pin = self._p("pin_yes") if rec.get("pin") else self._p("pin_no")
             rows.append(f"{login:<16} {role:<7} {pin:<4}")
-        self.ui.info(f"{'ACCOUNTS':^34}\n" + "\n".join(rows))
-        self.ui.system(f"total: {len(data)} accounts", "dim")
+        self.ui.info(f"{self._p('accounts_header'):^34}\n" + "\n".join(rows))
+        self.ui.system(self._p("total_accounts", len(data)), "dim")
 
     def send_admin(self, cmd, sig, rest=""):
         self.send_line(f"ADM {cmd} {sig} {rest}".rstrip())
 
     def cmd_kick(self, anon):
         if not self.admin_key:
-            self.ui.err("kick requires an admin session")
+            self.ui.err(self._p("need_admin_kick"))
             return
         sig = auth_hmac(self.admin_key.encode(), "kick:" + anon).hex()
         self.send_line(f"ADM KICK {anon} {sig}")
-        self.ui.system(f"kick sent: {anon}", "red")
+        self.ui.system(self._p("kick_sent", anon), "red")
 
     def cmd_broadcast(self, text):
         if not self.admin_key:
-            self.ui.err("broadcast requires an admin session")
+            self.ui.err(self._p("need_admin_msg"))
             return
         sig = auth_hmac(self.admin_key.encode(), "msg:" + text).hex()
         self.send_admin("MSG", sig, text)
-        self.ui.system(f"warning sent", "cyan")
+        self.ui.system(self._p("warning_sent"), "cyan")
 
     # --- command loop ------------------------------------------------------
 
@@ -124,7 +188,7 @@ class AdminPanel(ChatClient):
         banner = gradient_text("ADMIN PANEL", seed="admin",
                                spread=200) if truecolor() else "ADMIN PANEL"
         self.ui._write(f"{banner}  \u26a1  {self.login}")
-        self.ui.info("type /help for commands.")
+        self.ui.info(self._p("type_help"))
         threading.Thread(target=self.receiver, daemon=True).start()
         self.send_line("L")
         try:
@@ -162,26 +226,20 @@ class AdminPanel(ChatClient):
         cmd = parts[0]
         if cmd == "/kick":
             if len(parts) < 2:
-                self.ui.err("usage: /kick <anon>")
+                self.ui.err(self._p("usage_kick"))
             else:
                 self.cmd_kick(parts[1].strip())
             return
         if cmd == "/msg":
             if len(parts) < 2 or not parts[1].strip():
-                self.ui.err("usage: /msg <text>")
+                self.ui.err(self._p("usage_msg"))
             else:
                 self.cmd_broadcast(parts[1].strip())
             return
         if line == "/help":
-            self.ui.info(
-                "/anons          online ids\n"
-                "/accounts       users.json (login / role / pin)\n"
-                "/kick <anon>    disconnect a client\n"
-                "/msg <text>     red warning to everyone\n"
-                "/refresh        re-check accounts\n"
-                "/exit           leave panel")
+            self.ui.info(self._p("help"))
             return
-        self.ui.err(f"\u2718 unknown: {cmd}")
+        self.ui.err(self._p("unknown", cmd))
 
 
 def main():
